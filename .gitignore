@@ -2,3 +2,4 @@ env/
 __pycache__/
 hyperd.log
 tem.py
+test.py
