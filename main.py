@@ -1,18 +1,13 @@
 import requests
 import os
 from tableauhyperapi import HyperProcess, Connection, Telemetry, CreateMode, \
-    TableDefinition, TableName, SqlType, Inserter
-from settings import  COLUMN_NAMES
+TableDefinition, TableName, SqlType, Inserter
+from settings import COLUMN_NAMES
+from validations import validate_search_term
 
-search_term = input('What do you want to search?: ')
 
-# I have to get data from API MELI
-
-def get_items(n_items):
-    #search_term = input('What do you want? ')
-    url = f'https://api.mercadolibre.com/sites/MLA/search?q={search_term}&limit=50#json'
+def get_items(url, search_term, n_items):
     items = []
-
     offset = 0
     while offset < n_items:
         params = {
@@ -27,52 +22,57 @@ def get_items(n_items):
             results = data.get('results', [])
             items += results
             offset += len(results)
+
         else:
             print('error')
-    
+        
     return items
+    
+
+def create_hyper_table_definition():
+    table = TableDefinition(TableName('data_meli', 'data_meli'), [
+        TableDefinition.Column('id', SqlType.text()),
+        TableDefinition.Column('title', SqlType.text()),
+        TableDefinition.Column('condition', SqlType.text()),
+        TableDefinition.Column('price', SqlType.double()),
+        TableDefinition.Column('sold_quantity', SqlType.big_int()),
+        TableDefinition.Column('available_quantity', SqlType.big_int())
+    ])
+    return table
 
 
-# I have to generate hyper and I need to define the data structure table
+def insert_items_table(connection, table, items, column_name):
+    with Inserter(connection, table) as inserter:
+        try:
+            for item in items:
+                row = [item.get(column, 'error') for column in column_name]
+                inserter.add_row(row)
+            inserter.execute()
+        except Exception as e:
+            print(f"There is an error with the insert data: {str(e)}")
 
-def hyper_structure_generator():
-    local_path = os.path.join(os.getcwd(), 'public_data_meli.hyper') # Tabla
+
+def hyper_structure_generator(search_term):
+    local_path = os.path.join(os.getcwd(), 'public_data_meli.hyper')
     with HyperProcess(Telemetry.SEND_USAGE_DATA_TO_TABLEAU,
-                parameters = {"default_database_version": "2"}) as hyper:
+                       parameters={"default_database_version": "2"}) as hyper:
         with Connection(endpoint=hyper.endpoint, database=local_path, create_mode=CreateMode.CREATE_AND_REPLACE) as connection:
-            connection.catalog.create_schema('data_meli') # schema
+            connection.catalog.create_schema('data_meli')
 
-            # I will get 150 productos from meli API
-            items = get_items(n_items=150)
-            # create columns names with intems from get_products for table
-            column_names = COLUMN_NAMES
-            
-            table = TableDefinition(TableName('data_meli', 'data_meli'), [
-            TableDefinition.Column('id', SqlType.text()),
-            TableDefinition.Column('title', SqlType.text()),
-            TableDefinition.Column('condition', SqlType.text()),
-            TableDefinition.Column('price', SqlType.double()),
-            TableDefinition.Column('sold_quantity', SqlType.big_int()),
-            TableDefinition.Column('available_quantity', SqlType.big_int())
-            
-        ])
+
+            url = f'https://api.mercadolibre.com/sites/MLA/search?q={search_term}&limit=50#json'
+            items = get_items(url, search_term, n_items=150)
+            table = create_hyper_table_definition()
             connection.catalog.create_table(table)
 
-            # Insert elements into the table
-            with Inserter(connection, table) as inserter:
-                try:
-                    for item in items:
-                        
-                        row = [item.get(column, 'error') for column in column_names]
-                        inserter.add_row(row)
-                    inserter.execute()
-                except Exception as e:
-                    print(f"There is an error with the insert data: {str(e)}")
-   
-    return local_path
+            column_name = COLUMN_NAMES
 
+            insert_items_table(connection, table, items, column_name)
 
-# Use example
+        return local_path
+    
 
-hyper_path = hyper_structure_generator()
-print(f'executed successfully {hyper_path}')
+search_term = input('What do you want to search: ')
+if validate_search_term(search_term):
+    hyper_path = hyper_structure_generator(search_term)
+    print(f'Executed successfully, the hyper file is in the path {hyper_path}')
