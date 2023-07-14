@@ -1,5 +1,7 @@
 env/
 __pycache__/
 hyperd.log
+hyperd_1.log
 tem.py
-test.py
+cambios.py
+.pytest_cache/

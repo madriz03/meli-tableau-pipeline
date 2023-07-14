@@ -1,76 +1,24 @@
+import pytest
 import requests
-import os
-from tableauhyperapi import HyperProcess, Connection, Telemetry, CreateMode, \
-TableDefinition, TableName, SqlType, Inserter
-from settings import COLUMN_NAMES
+from main import get_items
+from main import create_hyper_table_definition
 
 
-def get_items(url, search_term, n_items):
-    items = []
-    offset = 0
-    while offset < n_items:
-        params = {
-            'query': search_term,
-            'offset': offset,
-            'limit': min((n_items - len(items), 50))
-        }
+def test_get_items_raises_exception_when_response_is_not_200():
+    # Object of false response. This cound be a wrong URL
+    any_response = requests.Response()
+    any_response.status_code = 400
 
-        response = requests.get(url, params=params)
-        if response.status_code == 200:
-            data = response.json()
-            results = data.get('results', [])
-            items += results
-            offset += len(results)
-
-        else:
-            print('error')
-        
-    return items
-    
-
-def create_hyper_table_definition():
-    table = TableDefinition(TableName('data_meli', 'data_meli'), [
-        TableDefinition.Column('id', SqlType.text()),
-        TableDefinition.Column('title', SqlType.text()),
-        TableDefinition.Column('condition', SqlType.text()),
-        TableDefinition.Column('price', SqlType.double()),
-        TableDefinition.Column('sold_quantity', SqlType.big_int()),
-        TableDefinition.Column('available_quantity', SqlType.big_int())
-    ])
-    return table
+    # `get_items()` with the object of false response
+    with pytest.raises(requests.exceptions.RequestException):
+        get_items(any_response, 'search_term', 10)
 
 
-def insert_items_table(connection, table, items, column_name):
-    with Inserter(connection, table) as inserter:
-        try:
-            for item in items:
-                row = [item.get(column, 'error') for column in column_name]
-                inserter.add_row(row)
-            inserter.execute()
-        except Exception as e:
-            print(f"There is an error with the insert data: {str(e)}")
 
 
-def hyper_structure_generator(search_term):
-    local_path = os.path.join(os.getcwd(), 'public_data_meli.hyper')
-    with HyperProcess(Telemetry.SEND_USAGE_DATA_TO_TABLEAU,
-                       parameters={"default_database_version": "2"}) as hyper:
-        with Connection(endpoint=hyper.endpoint, database=local_path, create_mode=CreateMode.CREATE_AND_REPLACE) as connection:
-            connection.catalog.create_schema('data_meli')
+def test_create_hyper_table_definition():
+    # Call the function to get the structure of the table
+    table_definition = create_hyper_table_definition()
 
-
-            url = f'https://api.mercadolibre.com/sites/MLA/search?q={search_term}&limit=50#json'
-            items = get_items(url, search_term, n_items=150)
-            table = create_hyper_table_definition()
-            connection.catalog.create_table(table)
-
-            column_name = COLUMN_NAMES
-
-            insert_items_table(connection, table, items, column_name)
-
-        return local_path
-    
-
-search_term = input('What do you want to search: ')
-hyper_path = hyper_structure_generator(search_term)
-print(f'Executed successfully, the hyper file is in the path {hyper_path}')
+    # Check that the return value is not None
+    assert table_definition is not None

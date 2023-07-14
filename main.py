@@ -34,14 +34,15 @@ def get_items(url, search_term, n_items):
             }
 
             response = requests.get(url, params=params)
-            response.raise_for_status()
+            if response.status_code != 200:
+                raise requests.exceptions.RequestException(f'Error occurred during API request: {response.status_code}')
             data = response.json()
             results = data.get('results', [])
             items += results
             offset += len(results)
 
     except requests.exceptions.RequestException as e:
-        print(f'Error occurred during API request: {str(e)}')
+        raise
         
     return items
     
@@ -91,8 +92,8 @@ def insert_items_table(connection, table, items, column_name):
                 inserter.add_row(row)
             inserter.execute()
         except Exception as e:
-            print(f"There is an error with the insert data: {str(e)}")
-
+            
+            raise Exception("Error occurred during data insertion: " + str(e))
 
 def hyper_structure_generator(search_term):
     """
@@ -121,7 +122,8 @@ def hyper_structure_generator(search_term):
 
 
             url = f'https://api.mercadolibre.com/sites/MLA/search?q={search_term}&limit=50#json'
-            items = get_items(url, search_term, n_items=150)
+            n_items = 150
+            items = get_items(url, search_term, n_items)
             table = create_hyper_table_definition()
             connection.catalog.create_table(table)
 
@@ -136,4 +138,4 @@ if __name__ == '__main__':
     search_term = input('What do you want to search: ')
     if validate_search_term(search_term):
         hyper_path = hyper_structure_generator(search_term)
-        print(f'Executed successfully, the hyper file is in the path {hyper_path}')
+        print(f'The hyper file is in the path {hyper_path}')
